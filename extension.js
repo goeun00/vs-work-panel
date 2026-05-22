@@ -77,11 +77,19 @@ class JiraWorkPanelProvider {
     this.view = null;
     this.timer = null;
     this.gitHeadWatcher = null;
+    this.gitHeadRefreshTimer = null;
   }
 
   resolveWebviewView(webviewView) {
     this.view = webviewView;
     this.watchGitHead();
+
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) {
+        this.scheduleBranchStateRefresh(0);
+      }
+    });
+
     webviewView.webview.options = {
       enableScripts: true,
       retainContextWhenHidden: true,
@@ -89,11 +97,6 @@ class JiraWorkPanelProvider {
         vscode.Uri.joinPath(this.context.extensionUri, "media"),
       ],
     };
-    webviewView.onDidChangeVisibility(() => {
-      if (webviewView.visible) {
-        this.sendState();
-      }
-    });
     webviewView.webview.html = this.getHtml(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage(async (message) => {
@@ -109,6 +112,7 @@ class JiraWorkPanelProvider {
         "loadBranches",
         "checkoutBranch",
         "openJira",
+        "openExternal",
         "testJiraConnection",
       ];
 
@@ -151,6 +155,10 @@ class JiraWorkPanelProvider {
 
       if (type === "openJira") {
         await this.openJira(payload.key);
+      }
+
+      if (type === "openExternal") {
+        await this.openExternal(payload.url);
       }
 
       if (type === "testJiraConnection") {
@@ -276,10 +284,14 @@ class JiraWorkPanelProvider {
       "jiraWorkPanel.lastIssues",
       [],
     );
-    const hasToken = Boolean(await this.context.secrets.get(SECRET_TOKEN_KEY));
-    const currentBranch = await this.getCurrentBranch();
-    const branches = await this.getRecentBranches();
-    const hasDirtyChanges = await this.hasDirtyChanges();
+    const [hasToken, currentBranch] = await Promise.all([
+      this.context.secrets.get(SECRET_TOKEN_KEY).then(Boolean),
+      this.getCurrentBranch(),
+    ]);
+    const [branches, hasDirtyChanges] = await Promise.all([
+      this.getRecentBranches(currentBranch),
+      this.hasDirtyChanges(),
+    ]);
 
     return {
       settings,
@@ -302,6 +314,80 @@ class JiraWorkPanelProvider {
       type: "state",
       payload: await this.getState(),
     });
+  }
+
+  async sendBranchState() {
+    if (!this.view) return;
+
+    const branchName = await this.getCurrentBranch();
+    const [branches, hasDirtyChanges] = await Promise.all([
+      this.getRecentBranches(branchName),
+      this.hasDirtyChanges(),
+    ]);
+
+    this.view.webview.postMessage({
+      type: "branchState",
+      payload: {
+        branchName,
+        branches,
+        hasDirtyChanges,
+      },
+    });
+  }
+
+  scheduleBranchStateRefresh(delay = 120) {
+    clearTimeout(this.gitHeadRefreshTimer);
+
+    this.gitHeadRefreshTimer = setTimeout(() => {
+      this.sendBranchState();
+    }, delay);
+  }
+
+  watchGitHead() {
+    if (this.gitHeadWatcher) return;
+
+    this.gitHeadWatcher = vscode.workspace.createFileSystemWatcher(
+      "**/.git/HEAD",
+    );
+
+    const refreshBranchState = () => {
+      this.scheduleBranchStateRefresh(120);
+    };
+
+    this.gitHeadWatcher.onDidChange(refreshBranchState);
+    this.gitHeadWatcher.onDidCreate(refreshBranchState);
+    this.gitHeadWatcher.onDidDelete(refreshBranchState);
+
+    this.context.subscriptions.push(this.gitHeadWatcher);
+  }
+
+  postBranchProgress(message, percent = null) {
+    this.view?.webview.postMessage({
+      type: "branchProgress",
+      payload: {
+        message,
+        percent,
+      },
+    });
+  }
+
+  createBranchProgressReporter(baseMessage) {
+    let lastSentAt = 0;
+    let lastPercent = -1;
+
+    return ({ percent }) => {
+      if (!Number.isFinite(percent)) return;
+
+      const now = Date.now();
+      const shouldSend =
+        percent !== lastPercent && (now - lastSentAt > 80 || percent === 100);
+
+      if (!shouldSend) return;
+
+      lastSentAt = now;
+      lastPercent = percent;
+      this.postBranchProgress(`${baseMessage} ${percent}%`, percent);
+    };
   }
 
   async syncIssues({ silent = false } = {}) {
@@ -335,15 +421,21 @@ class JiraWorkPanelProvider {
         lastSyncedAt,
       );
 
+      const currentBranch = await this.getCurrentBranch();
+      const [branches, hasDirtyChanges] = await Promise.all([
+        this.getRecentBranches(currentBranch),
+        this.hasDirtyChanges(),
+      ]);
+
       this.view.webview.postMessage({
         type: "issues",
         payload: {
           issues,
           hasToken: Boolean(token),
           lastSyncedAt,
-          branchName: await this.getCurrentBranch(),
-          branches: await this.getRecentBranches(),
-          hasDirtyChanges: await this.hasDirtyChanges(),
+          branchName: currentBranch,
+          branches,
+          hasDirtyChanges,
         },
       });
     } catch (error) {
@@ -420,6 +512,15 @@ class JiraWorkPanelProvider {
     }
   }
 
+  async openExternal(url) {
+    try {
+      const validatedUrl = validateUrl(url);
+      vscode.env.openExternal(vscode.Uri.parse(validatedUrl));
+    } catch (error) {
+      vscode.window.showErrorMessage(`URL 열기 실패: ${error.message}`);
+    }
+  }
+
   async testJiraConnection() {
     try {
       const token = await this.context.secrets.get(SECRET_TOKEN_KEY);
@@ -466,71 +567,85 @@ class JiraWorkPanelProvider {
   }
 
   async checkoutBranch(payload) {
-    const { branchName, mode } = payload || {};
+    const { branchName, mode = "normal" } = payload || {};
     if (!branchName) return;
+
+    let validatedBranch = "";
 
     try {
       // 🔴 보안: 브랜치명 검증
-      const validatedBranch = validateBranchName(branchName);
-      let stashRef = "";
+      validatedBranch = validateBranchName(branchName);
+
+      let stashCreated = false;
 
       if (mode === "stash") {
-        await execGit([
+        const stashOutput = await execGit([
           "stash",
           "push",
           "-u",
           "-m",
           `jira-work-panel auto stash ${new Date().toISOString()}`,
         ]);
-        stashRef = "stash@{0}";
+
+        stashCreated = !/No local changes to save/i.test(stashOutput);
       }
 
       if (mode === "discard") {
+        this.postBranchProgress("변경사항 정리 중");
         await execGit(["reset", "--hard"]);
         await execGit(["clean", "-fd"]);
       }
 
-      await execGit(["checkout", validatedBranch]);
+      const reportCheckoutProgress = this.createBranchProgressReporter(
+        "브랜치 전환 중",
+      );
 
-      if (stashRef) {
-        await execGit(["stash", "pop", stashRef]);
+      this.postBranchProgress("브랜치 전환 중");
+      await execGitWithProgress(
+        ["checkout", "--progress", validatedBranch],
+        reportCheckoutProgress,
+      );
+
+      if (mode === "stash" && stashCreated) {
+        this.postBranchProgress("stash 복원 중");
+        await execGit(["stash", "pop", "stash@{0}"]);
       }
 
-      // 🎯 개선: 즉시 성공 응답 전송 (상태는 watchGitHead가 자동으로 갱신)
       this.view?.webview.postMessage({
         type: "checkoutResult",
         payload: {
           ok: true,
-          branchName: validatedBranch, // 체크아웃한 브랜치명 바로 사용
+          branchName: validatedBranch,
+          // 빠른 응답용 힌트입니다. 정확한 dirty/branches 상태는 branchState에서 다시 내려줍니다.
+          hasDirtyChanges:
+            mode === "discard" ? false : mode === "stash" && stashCreated,
         },
       });
 
-      // watchGitHead가 .git/HEAD 변경을 감지하고 sendState()를 자동 호출하므로
-      // 여기서는 git 명령 실행 불필요
+      this.scheduleBranchStateRefresh(0);
     } catch (error) {
+      let currentBranch = validatedBranch || branchName;
+
+      try {
+        currentBranch = await this.getCurrentBranch();
+      } catch {
+        // 실패 상황에서는 추가 조회 실패를 무시합니다.
+      }
+
       this.view?.webview.postMessage({
         type: "checkoutResult",
-        payload: { ok: false, branchName, message: error.message },
+        payload: {
+          ok: false,
+          branchName: currentBranch || branchName,
+          message: error.message,
+        },
       });
+
+      this.scheduleBranchStateRefresh(0);
       vscode.window.showWarningMessage(`브랜치 이동 실패: ${error.message}`);
     }
   }
-  watchGitHead() {
-    if (this.gitHeadWatcher) return;
 
-    this.gitHeadWatcher =
-      vscode.workspace.createFileSystemWatcher("**/.git/HEAD");
-
-    const refreshBranchState = () => {
-      this.sendState();
-    };
-
-    this.gitHeadWatcher.onDidChange(refreshBranchState);
-    this.gitHeadWatcher.onDidCreate(refreshBranchState);
-    this.gitHeadWatcher.onDidDelete(refreshBranchState);
-
-    this.context.subscriptions.push(this.gitHeadWatcher);
-  }
   async getCurrentBranch() {
     try {
       return (await execGit(["branch", "--show-current"])).trim();
@@ -539,7 +654,7 @@ class JiraWorkPanelProvider {
     }
   }
 
-  async getRecentBranches() {
+  async getRecentBranches(current = "") {
     try {
       const output = await execGit([
         "for-each-ref",
@@ -549,7 +664,6 @@ class JiraWorkPanelProvider {
         "refs/heads",
       ]);
       const aliases = this.context.workspaceState.get(BRANCH_ALIAS_KEY, {});
-      const current = await this.getCurrentBranch();
 
       return output
         .split(/\r?\n/)
@@ -589,6 +703,63 @@ function execGit(args) {
       resolve(stdout);
     });
   });
+}
+
+function execGitWithProgress(args, onProgress) {
+  const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!cwd) {
+    return Promise.reject(new Error("열려 있는 워크스페이스가 없습니다."));
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = cp.spawn("git", args, { cwd });
+    let stdout = "";
+    let stderr = "";
+
+    const handleChunk = (chunk, streamName) => {
+      const text = chunk.toString();
+
+      if (streamName === "stdout") {
+        stdout += text;
+      } else {
+        stderr += text;
+      }
+
+      const progress = parseGitProgress(text);
+      if (progress) {
+        onProgress?.(progress);
+      }
+    };
+
+    child.stdout.on("data", (chunk) => handleChunk(chunk, "stdout"));
+    child.stderr.on("data", (chunk) => handleChunk(chunk, "stderr"));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(stdout || stderr);
+        return;
+      }
+
+      reject(new Error(stderr || `git exited with code ${code}`));
+    });
+  });
+}
+
+function parseGitProgress(text) {
+  const lines = String(text || "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const message = lines.at(-1) || String(text || "").trim();
+  const match = message.match(/(\d{1,3})%/);
+
+  if (!match) return null;
+
+  return {
+    percent: Math.max(0, Math.min(100, Number(match[1]))),
+    message,
+  };
 }
 
 function normalizeStatusCategory(categoryKey) {

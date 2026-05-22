@@ -21,6 +21,7 @@ const state = {
   hasToken: false,
   lastSyncedAt: Date.now(),
   branchName: "",
+  branchLoadingText: "브랜치 확인 중",
   branches: [],
   profileImages: [],
   settings: {
@@ -254,9 +255,18 @@ function updateHeader() {
     state.loading.branch,
   );
 
-  els.branchName.textContent = state.loading.branch
-    ? "브랜치 확인 중"
-    : state.branchName || "브랜치 없음";
+  if (state.loading.branch) {
+    els.branchName.classList.add("jira-panel__branch-loading-text");
+    els.branchName.innerHTML = `
+      ${escapeHtml(state.branchLoadingText || "브랜치 확인 중")}
+      <span class="jira-panel__branch-loading-dots" aria-hidden="true">
+        <i></i><i></i><i></i>
+      </span>
+    `;
+  } else {
+    els.branchName.classList.remove("jira-panel__branch-loading-text");
+    els.branchName.textContent = state.branchName || "브랜치 없음";
+  }
   if (els.dirtyDot) {
     els.dirtyDot.hidden = state.loading.branch || !state.hasDirtyChanges;
   }
@@ -277,9 +287,12 @@ function renderBranches() {
     "aria-expanded",
     String(state.branchExpanded),
   );
-  els.branchMoreButton.innerHTML = state.branchExpanded
-    ? '<span>Recent</span><span class="codicon codicon-chevron-up" aria-hidden="true"></span>'
-    : '<span>Recent</span><span class="codicon codicon-chevron-down" aria-hidden="true"></span>';
+  els.branchMoreButton.innerHTML = `
+    <span>Branches</span>
+    <span class="codicon ${
+      state.branchExpanded ? "codicon-chevron-up" : "codicon-chevron-down"
+    }" aria-hidden="true"></span>
+  `;
   els.branchMoreButton.title = state.branchExpanded
     ? "최근 브랜치 접기"
     : "최근 브랜치 열기";
@@ -626,6 +639,7 @@ function persistViewState() {
       branch: false,
     },
     profileDropdownOpen: false,
+    branchLoadingText: "브랜치 확인 중",
     editingAliasBranch: "",
     pendingCheckoutBranch: "",
     checkoutError: "",
@@ -908,6 +922,13 @@ function confirmCheckout(mode) {
 }
 
 function requestCheckout(branchName, mode) {
+  state.branchLoadingText =
+    mode === "stash"
+      ? "stash 후 전환 중"
+      : mode === "discard"
+        ? "변경사항 정리 중"
+        : "브랜치 전환 중";
+
   setLoading("branch", true);
   render();
   post("checkoutBranch", { branchName, mode });
@@ -1007,15 +1028,23 @@ function bindEvents() {
       showToast(payload?.message || "Jira 동기화 실패");
     }
 
+    if (type === "branchProgress") {
+      state.branchLoadingText = payload?.message || "브랜치 전환 중";
+      setLoading("branch", true);
+      render();
+    }
+
     if (type === "checkoutResult") {
       setLoading("branch", false);
+      state.branchLoadingText = "브랜치 확인 중";
+
       if (payload?.ok) {
-        state.branchName = payload.branchName;
-        state.hasDirtyChanges = Boolean(payload.hasDirtyChanges);
         mergeState({
           branchName: payload.branchName,
-          branches: payload.branches || state.branches,
-          hasDirtyChanges: Boolean(payload.hasDirtyChanges),
+          hasDirtyChanges:
+            typeof payload.hasDirtyChanges === "boolean"
+              ? payload.hasDirtyChanges
+              : state.hasDirtyChanges,
         });
         render();
         showToast(
@@ -1028,8 +1057,23 @@ function bindEvents() {
           payload?.message ||
             "현재 변경사항이 이동할 브랜치와 충돌할 수 있어요.",
         );
-        showToast("그냥 이동할 수 없어요");
+        showToast("브랜치 이동 실패");
       }
+    }
+
+    if (type === "branchState") {
+      mergeState({
+        branchName: payload?.branchName || state.branchName,
+        branches: payload?.branches || state.branches,
+        hasDirtyChanges: Boolean(payload?.hasDirtyChanges),
+        branchLoadingText: "브랜치 확인 중",
+        loading: {
+          ...state.loading,
+          branch: false,
+        },
+      });
+
+      render();
     }
 
     if (type === "connectionResult") {
