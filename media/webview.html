@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="${styleUri}" rel="stylesheet" />
+  <title>Jira Work Panel</title>
+</head>
+<body>
+  <main class="jira-panel">
+    <header class="jira-panel__header" id="panelHeader">
+      <div class="jira-panel__title-row">
+        <h1 class="jira-panel__title">
+          <span class="jira-panel__title-icon" id="panelIcon" aria-hidden="true">J</span>
+          <span class="jira-panel__title-text">
+            <span class="jira-panel__name" id="panelUserName">Jira</span>
+            <span class="jira-panel__sub-name" id="panelMoodText">Jira Work Panel</span>
+          </span>
+        </h1>
+        <div class="jira-panel__tools">
+          <div class="jira-panel__mini-sync" aria-live="polite">
+            <button class="jira-panel__sync-status" id="autoSyncButton" type="button" data-action="toggleAutoSync" aria-pressed="true" title="Auto sync 켜기/끄기">
+              <span class="jira-panel__sync-dot" id="syncStatusDot" aria-hidden="true"></span>
+              <span id="syncIntervalText">Auto 3m</span>
+            </button>
+            <button class="jira-panel__button jira-panel__button--meta-refresh" type="button" data-action="sync" title="새로고침" aria-label="새로고침">
+              <span class="codicon codicon-sync" aria-hidden="true"></span>
+            </button>
+          </div>
+          <button class="jira-panel__button jira-panel__button--icon" id="viewToggleButton" type="button" data-action="settings" title="설정">
+            <span class="codicon codicon-settings-gear" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+
+
+      <div class="jira-panel__branch-row">
+        <div class="jira-panel__branch">
+        <span class="jira-panel__branch-icon codicon codicon-git-branch" aria-label="현재 브랜치"></span>
+        <span id="branchName">브랜치 불러오는 중</span>
+        <span class="jira-panel__dirty-dot" id="dirtyDot" title="변경사항 있음" aria-label="변경사항 있음" hidden></span>
+        </div>
+        <button class="jira-panel__branch-more" id="branchMoreButton" type="button" data-action="toggleBranches" aria-expanded="false" title="최근 브랜치 열기"></button>
+      </div>
+      <div class="jira-panel__branch-list-wrap">
+        <div class="jira-panel__branch-list" id="branchList" aria-label="최근 브랜치 이동"></div>
+      </div>
+    </header>
+
+    <section class="jira-panel__view jira-panel__view--list jira-panel__view--active" id="listView">
+      <div class="jira-list-controls">
+        <div class="jira-list-head">
+          <h2 class="jira-section-heading__title">Issues</h2>
+          <div class="jira-panel__search">
+            <span class="jira-panel__search-icon codicon codicon-search" aria-hidden="true"></span>
+            <input class="jira-panel__input" id="searchInput" type="search" placeholder="key, title, memo" />
+          </div>
+        </div>
+
+      <div class="jira-panel__tabs" role="tablist" aria-label="Jira 상태 필터">
+        <button class="jira-panel__tab" type="button" role="tab" aria-selected="true" data-filter="pin">Pin <span class="jira-panel__tab-count" data-count="pin">0</span></button>
+        <button class="jira-panel__tab" type="button" role="tab" aria-selected="false" data-filter="todo">Todo <span class="jira-panel__tab-count" data-count="todo">0</span></button>
+        <button class="jira-panel__tab" type="button" role="tab" aria-selected="false" data-filter="doing">Doing <span class="jira-panel__tab-count" data-count="doing">0</span></button>
+        <button class="jira-panel__tab" type="button" role="tab" aria-selected="false" data-filter="done">Done <span class="jira-panel__tab-count" data-count="done">0</span></button>
+      </div>
+      <p class="jira-panel__search-note" id="searchFilterNote" hidden>검색 중에는 필터가 잠시 비활성화돼요.</p>
+      </div>
+
+      <div class="jira-panel__section" id="jiraList"></div>
+    </section>
+
+    <section class="jira-panel__view jira-panel__view--settings" id="settingsView" aria-label="Jira Work Panel 설정">
+      <div class="setting-header">
+        <div>
+          <h2 class="setting-header__title">설정</h2>
+          <p class="setting-header__desc">패널 표시와 Jira 동기화 기준을 정리해요.</p>
+        </div>
+      </div>
+
+      <div class="setting-scroll">
+      <div class="setting-group">
+        <h3 class="setting-group__title">프로필</h3>
+        <div class="setting-field setting-field--profile-name">
+          <div class="setting-profile-select">
+            <button class="setting-profile-trigger" id="settingProfileTrigger" type="button" data-action="toggleProfileDropdown" aria-expanded="false" title="프로필 이미지 선택">
+              <span class="setting-icon-preview" id="settingIconPreview" aria-hidden="true">J</span>
+            </button>
+            <div class="setting-profile-list" id="settingProfileList" aria-label="프로필 이미지 선택"></div>
+          </div>
+          <div class="setting-profile-inputs">
+            <input class="jira-panel__input" id="settingUserName" type="text" aria-label="패널 이름" placeholder="패널 이름" />
+            <input class="jira-panel__input" id="settingSubtitle" type="text" aria-label="패널 보조 문구" placeholder="Jira Work Panel" />
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <h3 class="setting-group__title">Jira 연결</h3>
+        <label class="setting-field">
+          <span class="setting-field__label">Jira Base URL</span>
+          <input class="jira-panel__input" id="settingJiraBaseUrl" type="url" placeholder="https://jira.gmarket.com" />
+        </label>
+        <label class="setting-field">
+          <span class="setting-field__label">API Token / PAT</span>
+          <input class="jira-panel__input" id="settingJiraToken" type="password" placeholder="토큰은 저장 후 다시 표시하지 않습니다" />
+          <p class="setting-field__help" id="settingTokenStatus">토큰 저장 여부를 확인 중입니다.</p>
+        </label>
+        <p class="setting-note">PAT로 인증하면 사용자 정보는 토큰 기준으로 확인할 수 있어요. 내 이슈 조회는 JQL의 <strong>currentUser()</strong>를 기본으로 사용합니다.</p>
+      </div>
+
+      <div class="setting-group">
+        <h3 class="setting-group__title">동기화</h3>
+        <label class="setting-field">
+          <span class="setting-field__label">자동 동기화 간격</span>
+          <select class="jira-panel__select" id="settingSyncMinutes">
+            <option value="1">1분</option>
+            <option value="3">3분</option>
+            <option value="5">5분</option>
+            <option value="10">10분</option>
+            <option value="0">끄기</option>
+          </select>
+        </label>
+        <label class="setting-field">
+          <span class="setting-field__label">기본 JQL</span>
+          <textarea class="jira-panel__textarea" id="settingJql" placeholder="(assignee = currentUser() OR watcher = currentUser()) AND (statusCategory != Done OR (statusCategory = Done AND updated >= -60d)) ORDER BY updated DESC"></textarea>
+        </label>
+        <p class="setting-note">Todo / Doing / Done 분류는 Jira의 <strong>statusCategory</strong> 기준으로 처리합니다.</p>
+      </div>
+
+      </div>
+      <div class="setting-actions">
+        <button class="jira-panel__button" type="button" data-action="testConnection">연결 테스트</button>
+        <button class="jira-panel__button jira-panel__button--primary" type="button" data-action="saveSettings">저장</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="checkout-guard" id="checkoutGuard" aria-hidden="true">
+    <div class="checkout-guard__box" role="dialog" aria-modal="true" aria-labelledby="checkoutGuardTitle">
+      <div class="checkout-guard__head">
+        <span class="checkout-guard__icon codicon codicon-warning" aria-hidden="true"></span>
+        <div>
+          <h2 class="checkout-guard__title" id="checkoutGuardTitle">변경사항이 있어요</h2>
+          <p class="checkout-guard__desc" id="checkoutGuardDesc">그대로 이동하거나, 먼저 임시저장할 수 있어요.</p>
+        </div>
+      </div>
+      <div class="checkout-guard__target-box">
+        <span class="checkout-guard__target-label">target</span>
+        <span class="checkout-guard__target" id="checkoutGuardBranch">-</span>
+      </div>
+      <div class="checkout-guard__actions">
+        <button class="checkout-guard__button checkout-guard__button--primary" type="button" data-action="confirmCheckout" data-mode="stash">
+          <strong>Stash 후 이동</strong>
+          <span>변경사항을 임시저장해요</span>
+        </button>
+        <button class="checkout-guard__button" id="directCheckoutButton" type="button" data-action="confirmCheckout" data-mode="normal" hidden>
+          <strong>그냥 이동</strong>
+          <span>변경사항을 유지하고 checkout</span>
+        </button>
+        <button class="checkout-guard__button checkout-guard__button--danger" type="button" data-action="confirmCheckout" data-mode="discard">
+          <strong>버리고 이동</strong>
+          <span>변경사항을 삭제해요</span>
+        </button>
+      </div>
+      <div class="checkout-guard__footer">
+        <button class="checkout-guard__text-button" type="button" data-action="cancelCheckout">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="jira-toast" id="toast" role="status" aria-live="polite"></div>
+  <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

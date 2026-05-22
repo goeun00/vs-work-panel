@@ -1,0 +1,54 @@
+{
+  "name": "jira-work-panel",
+  "displayName": "Jira Work Panel",
+  "description": "A lightweight VS Code sidebar panel for Jira issues, pins, memos, and branch-based workflow.",
+  "version": "0.0.1",
+  "publisher": "goeun",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:jiraWorkPanel.view"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "jiraWorkPanel",
+          "title": "Jira",
+          "icon": "media/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "jiraWorkPanel": [
+        {
+          "id": "jiraWorkPanel.view",
+          "name": "Jira Work Panel",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "jiraWorkPanel.refresh",
+        "title": "Jira Work Panel: Refresh"
+      }
+    ],
+    "configuration": {
+      "title": "Jira Work Panel",
+      "properties": {
+        "jiraWorkPanel.jiraBaseUrl": {
+          "type": "string",
+          "default": "https://jira.gmarket.com",
+          "description": "Jira base URL."
+        }
+      }
+    }
+  },
+  "configuration": {}
+}
