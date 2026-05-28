@@ -2,7 +2,11 @@ const vscode = acquireVsCodeApi();
 
 const state = {
   view: "list",
-  filter: "pin",
+  scopeFilters: {
+    linked: false,
+    pin: false,
+  },
+  statusFilter: "all",
   keyword: "",
   ready: false,
   loading: {
@@ -52,9 +56,11 @@ const els = {
   dirtyDot: document.querySelector("#dirtyDot"),
   branchList: document.querySelector("#branchList"),
   branchMoreButton: document.querySelector("#branchMoreButton"),
+  searchMode: document.querySelector(".jira-search-mode"),
+  filterStack: document.querySelector(".jira-filter-stack"),
+  searchInput: document.querySelector(".jira-panel__search .jira-panel__input"),
   searchInput: document.querySelector("#searchInput"),
-  tabs: [...document.querySelectorAll(".jira-panel__tab")],
-  searchFilterNote: document.querySelector("#searchFilterNote"),
+  tabs: [...document.querySelectorAll("[data-filter]")],
   counts: [...document.querySelectorAll("[data-count]")],
   list: document.querySelector("#jiraList"),
   settingUserName: document.querySelector("#settingUserName"),
@@ -87,6 +93,12 @@ function mergeState(payload) {
     ...currentLoading,
     ...(payload?.loading || {}),
   };
+  state.scopeFilters = {
+    linked: false,
+    pin: false,
+    ...(state.scopeFilters || {}),
+  };
+  state.statusFilter = state.statusFilter || "all";
 }
 
 function setLoading(type, value) {
@@ -227,6 +239,17 @@ function formatRelativeSyncTime(timestamp) {
   return `${Math.floor(minutes / 60)}시간 전 동기화`;
 }
 
+function updateSearchMode() {
+  const isSearchMode = Boolean(state.keyword.trim());
+
+  if (els.searchMode) {
+    els.searchMode.hidden = !isSearchMode;
+  }
+
+  if (els.filterStack) {
+    els.filterStack.hidden = isSearchMode;
+  }
+}
 function updateHeader() {
   const branchKey = getBranchIssueKey(state.branchName);
   const syncMinutes = Number(state.settings.syncMinutes);
@@ -276,8 +299,8 @@ function updateHeader() {
 }
 
 function renderBranches() {
-  const branches = state.branches.slice(0, 5);
-  const hiddenCount = state.branches.slice(0, 5).length;
+  const branches = state.branches.slice(0, 8);
+  const hiddenCount = state.branches.slice(0, 8).length;
 
   els.branchList.classList.toggle(
     "jira-panel__branch-list--expanded",
@@ -407,13 +430,18 @@ function updateView() {
 }
 
 function updateCounts() {
+  const branchKey = getBranchIssueKey(state.branchName);
+
   const counts = state.issues.reduce(
     (acc, issue) => {
+      const isLinked = issue.key === branchKey || issue.epicKey === branchKey;
+
+      if (isLinked) acc.linked += 1;
       if (issue.pinned) acc.pin += 1;
       acc[issue.statusCategory] = (acc[issue.statusCategory] || 0) + 1;
       return acc;
     },
-    { pin: 0, todo: 0, doing: 0, done: 0 },
+    { linked: 0, pin: 0, todo: 0, doing: 0, done: 0 },
   );
 
   els.counts.forEach((count) => {
@@ -424,13 +452,25 @@ function updateCounts() {
 function getVisibleIssues() {
   const keyword = getSearchKeyword();
   const branchKey = getBranchIssueKey(state.branchName);
+  const hasScopeFilter = Boolean(
+    state.scopeFilters?.linked || state.scopeFilters?.pin,
+  );
 
   return state.issues
     .filter((issue) => {
       if (keyword) return true;
-      return state.filter === "pin"
-        ? issue.pinned
-        : issue.statusCategory === state.filter;
+
+      const isLinked = issue.key === branchKey || issue.epicKey === branchKey;
+      const matchesScope = !hasScopeFilter
+        ? true
+        : (state.scopeFilters.linked && isLinked) ||
+          (state.scopeFilters.pin && issue.pinned);
+      const matchesStatus =
+        state.statusFilter === "all"
+          ? true
+          : issue.statusCategory === state.statusFilter;
+
+      return matchesScope && matchesStatus;
     })
     .filter((issue) => {
       if (!keyword) return true;
@@ -441,14 +481,13 @@ function getVisibleIssues() {
         issue.assignee,
         issue.reporter,
         issue.statusCategory,
+        issue.epicKey,
       ]
         .join(" ")
         .toLowerCase()
         .includes(keyword.toLowerCase());
     })
     .sort((a, b) => {
-      if (a.key === branchKey) return -1;
-      if (b.key === branchKey) return 1;
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       return 0;
     });
@@ -476,7 +515,8 @@ function renderIssues() {
       const hiddenMemoLineCount = Math.max(memoLines.length - 1, 0);
       const isMemoOpen = state.openMemoKey === issue.key;
       const isMemoEditing = state.editingMemoKey === issue.key;
-      const isActiveBranch = issue.key === branchKey;
+      const isActiveBranch =
+        issue.key === branchKey || issue.epicKey === branchKey;
       const classes = [
         "jira-card",
         isActiveBranch ? "jira-card--active" : "",
@@ -497,7 +537,7 @@ function renderIssues() {
               <div class="jira-card__key-row">
                 <a class="jira-card__key" href="${escapeAttr(issue.url)}" data-action="open" data-key="${escapeAttr(issue.key)}">${highlightText(issue.key)}</a>
                 <span class="jira-card__tag jira-card__tag--${escapeAttr(issue.statusCategory)}">${escapeHtml(getStatusLabel(issue.statusCategory))}</span>
-                ${isActiveBranch ? '<span class="jira-card__tag">current</span>' : ""}
+                ${isActiveBranch ? `<span class="jira-card__tag">${issue.key === branchKey ? "current" : "epic current"}</span>` : ""}
               </div>
               <p class="jira-card__title">${highlightText(issue.title)}</p>
             </div>
@@ -506,7 +546,7 @@ function renderIssues() {
             </div>
           </div>
           <div class="jira-card__meta">
-            <span>${highlightText(issue.reporter ? `요청자 ${issue.reporter}` : issue.assignee || "")}</span>
+            <span>${highlightText(issue.reporter ? `${issue.reporter}` : issue.assignee || "")}</span>
             <span>·</span>
             <span>${escapeHtml(issue.updated || "")}</span>
           </div>
@@ -555,11 +595,19 @@ function getEmptyTemplate() {
     `;
   }
 
-  if (state.filter === "pin" && !state.keyword.trim()) {
+  const hasScopeFilter = Boolean(
+    state.scopeFilters?.linked || state.scopeFilters?.pin,
+  );
+
+  if (
+    !hasScopeFilter &&
+    state.statusFilter === "all" &&
+    !state.keyword.trim()
+  ) {
     return `
       <div class="jira-empty">
-        <strong class="jira-empty__title">고정된 Jira가 없습니다.</strong>
-        <p class="jira-empty__desc">자주 확인하는 이슈는 ☆를 눌러 고정할 수 있습니다.</p>
+        <strong class="jira-empty__title">표시할 Jira가 없습니다.</strong>
+        <p class="jira-empty__desc">새로고침하거나 Jira 연결 설정을 확인해 주세요.</p>
       </div>
     `;
   }
@@ -592,6 +640,7 @@ function getLoadingTemplate() {
 }
 
 function render() {
+  updateSearchMode();
   updateHeader();
   updateSettingsForm();
   updateView();
@@ -600,10 +649,22 @@ function render() {
   els.searchInput.value = state.keyword;
 
   const isSearching = Boolean(getSearchKeyword());
+
+  document.querySelectorAll("[data-scope]").forEach((button) => {
+    const scope = button.dataset.scope;
+    button.setAttribute(
+      "aria-pressed",
+      String(Boolean(state.scopeFilters?.[scope])),
+    );
+    button.disabled = isSearching;
+    button.setAttribute("aria-disabled", String(isSearching));
+  });
+
+  els.tabs = [...document.querySelectorAll("[data-filter]")];
   els.tabs.forEach((tab) => {
     tab.setAttribute(
       "aria-selected",
-      String(!isSearching && tab.dataset.filter === state.filter),
+      String(!isSearching && tab.dataset.filter === state.statusFilter),
     );
     tab.disabled = isSearching;
     tab.setAttribute("aria-disabled", String(isSearching));
@@ -868,11 +929,8 @@ function saveBranchAlias() {
 function checkoutBranch(branchName) {
   if (!branchName || branchName === state.branchName) return;
 
-  if (state.hasDirtyChanges) {
-    openCheckoutGuard(branchName);
-    return;
-  }
-
+  // stale dirty 상태 때문에 브랜치 이동이 막히지 않도록
+  // 우선 Git checkout을 직접 시도하고, 실패했을 때만 정리 팝업을 띄웁니다.
   requestCheckout(branchName, "normal");
 }
 
@@ -939,7 +997,7 @@ function bindEvents() {
     const target = event.target.closest("[data-action]");
     if (!target) return;
 
-    const { action, key, branch, mode, profileId } = target.dataset;
+    const { action, key, branch, mode, profileId, scope } = target.dataset;
 
     if (action === "sync") requestSync();
     if (action === "toggleAutoSync") toggleAutoSync();
@@ -954,6 +1012,16 @@ function bindEvents() {
       render();
     }
     if (action === "pin") togglePin(key);
+    if (action === "toggleScopeFilter") {
+      if (scope === "linked" || scope === "pin") {
+        state.scopeFilters = {
+          ...state.scopeFilters,
+          [scope]: !state.scopeFilters[scope],
+        };
+        render();
+      }
+      return;
+    }
     if (action === "memo") toggleMemo(key);
     if (action === "memoEdit") editMemo(key);
     if (action === "memoCancel") cancelMemoEdit(key);
@@ -969,7 +1037,17 @@ function bindEvents() {
     if (action === "confirmCheckout") confirmCheckout(mode);
     if (action === "cancelCheckout") closeCheckoutGuard();
     if (action === "testConnection") post("testJiraConnection");
+    if (action === "clearSearch") {
+      state.keyword = "";
 
+      if (els.searchInput) {
+        els.searchInput.value = "";
+        els.searchInput.focus();
+      }
+
+      render();
+      return;
+    }
     if (action === "open") {
       event.preventDefault();
       post("openJira", { key });
@@ -981,11 +1059,12 @@ function bindEvents() {
     }
   });
 
-  els.tabs.forEach((tab) => {
-    tab.addEventListener("click", () => {
-      state.filter = tab.dataset.filter;
-      render();
-    });
+  document.addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-filter]");
+    if (!tab) return;
+
+    state.statusFilter = tab.dataset.filter || "all";
+    render();
   });
 
   els.searchInput.addEventListener("input", (event) => {

@@ -11,6 +11,12 @@ const DEFAULT_JQL =
   "(statusCategory != Done OR (statusCategory = Done AND updated >= -60d)) " +
   "ORDER BY updated DESC";
 
+const ISSUE_FIELD_NAMES = {
+  epicLink: "Epic Link",
+};
+
+let cachedIssueFieldIds = null;
+
 // 🔴 보안: Jira 이슈 키 검증
 function validateJiraKey(key) {
   if (typeof key !== "string") {
@@ -346,9 +352,8 @@ class JiraWorkPanelProvider {
   watchGitHead() {
     if (this.gitHeadWatcher) return;
 
-    this.gitHeadWatcher = vscode.workspace.createFileSystemWatcher(
-      "**/.git/HEAD",
-    );
+    this.gitHeadWatcher =
+      vscode.workspace.createFileSystemWatcher("**/.git/HEAD");
 
     const refreshBranchState = () => {
       this.scheduleBranchStateRefresh(120);
@@ -453,7 +458,13 @@ class JiraWorkPanelProvider {
     const baseUrl = trimTrailingSlash(settings.jiraBaseUrl);
     const jql = settings.jql;
 
-    const fields = "summary,status,assignee,reporter,updated";
+    const issueFieldIds = await getIssueFieldIds(baseUrl, token);
+    const epicLinkField = issueFieldIds.epicLink;
+
+    const fields = ["summary,status,assignee,reporter,updated", epicLinkField]
+      .filter(Boolean)
+      .join(",");
+
     const issues = await fetchAllJiraIssues({
       baseUrl,
       token,
@@ -466,6 +477,7 @@ class JiraWorkPanelProvider {
     return issues.map((issue) => {
       const statusCategoryKey = issue.fields?.status?.statusCategory?.key;
       const statusCategory = normalizeStatusCategory(statusCategoryKey);
+      const epicKey = epicLinkField ? issue.fields?.[epicLinkField] || "" : "";
 
       return {
         key: issue.key,
@@ -477,6 +489,7 @@ class JiraWorkPanelProvider {
         url: `${baseUrl}/browse/${issue.key}`,
         pinned: false,
         memo: "",
+        epicKey,
       };
     });
   }
@@ -596,9 +609,8 @@ class JiraWorkPanelProvider {
         await execGit(["clean", "-fd"]);
       }
 
-      const reportCheckoutProgress = this.createBranchProgressReporter(
-        "브랜치 전환 중",
-      );
+      const reportCheckoutProgress =
+        this.createBranchProgressReporter("브랜치 전환 중");
 
       this.postBranchProgress("브랜치 전환 중");
       await execGitWithProgress(
@@ -659,7 +671,7 @@ class JiraWorkPanelProvider {
       const output = await execGit([
         "for-each-ref",
         "--sort=-committerdate",
-        "--count=5",
+        "--count=8",
         "--format=%(refname:short)",
         "refs/heads",
       ]);
@@ -767,6 +779,54 @@ function normalizeStatusCategory(categoryKey) {
   if (categoryKey === "indeterminate") return "doing";
   if (categoryKey === "done") return "done";
   return "todo";
+}
+
+function normalizeFieldName(name = "") {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function findFieldIdByNames(fields = [], names = []) {
+  const normalizedNames = names.map(normalizeFieldName);
+
+  const matched = fields.find((field) =>
+    normalizedNames.includes(normalizeFieldName(field.name)),
+  );
+
+  return matched?.id || "";
+}
+
+async function getIssueFieldIds(baseUrl, token) {
+  if (cachedIssueFieldIds) return cachedIssueFieldIds;
+
+  const url = new URL("/rest/api/2/field", trimTrailingSlash(baseUrl));
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      cachedIssueFieldIds = { epicLink: "" };
+      return cachedIssueFieldIds;
+    }
+
+    const fields = await res.json();
+
+    cachedIssueFieldIds = {
+      epicLink: findFieldIdByNames(fields, [ISSUE_FIELD_NAMES.epicLink]),
+    };
+
+    return cachedIssueFieldIds;
+  } catch {
+    cachedIssueFieldIds = { epicLink: "" };
+    return cachedIssueFieldIds;
+  }
 }
 
 function getAutoBranchAlias(branchName) {
