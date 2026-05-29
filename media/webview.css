@@ -751,10 +751,10 @@ button {
   display: none;
 }
 .jira-filter-head {
-  display: flex;
-  min-height: 20px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  min-height: 24px;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 
@@ -782,24 +782,18 @@ button {
   gap: 7px;
 }
 
-.jira-filter-row--status {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 0;
-}
-
 .jira-scope-toggle {
   display: inline-flex;
-  height: 22px;
+  height: 26px;
   min-width: 0;
   flex: 0 0 auto;
   align-items: center;
   justify-content: flex-start;
-  gap: 5px;
-  padding: 0 2px 0 0;
+  gap: 6px;
+  padding: 0 4px 0 0;
   border: 0;
   border-radius: 999px;
-  color: rgba(216, 222, 233, 0.68);
+  color: rgba(216, 222, 233, 0.72);
   background: transparent;
   font-size: 10px;
   font-weight: 800;
@@ -818,12 +812,12 @@ button {
 
 .jira-scope-toggle__switch {
   position: relative;
-  width: 22px;
-  height: 12px;
+  width: 24px;
+  height: 14px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: rgba(156, 167, 184, 0.24);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+  background: rgba(156, 167, 184, 0.26);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.16);
   transition: background 0.16s ease;
 }
 
@@ -831,10 +825,10 @@ button {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  background: rgba(216, 222, 233, 0.68);
+  background: rgba(216, 222, 233, 0.76);
   transition:
     transform 0.16s ease,
     background 0.16s ease;
@@ -856,11 +850,11 @@ button {
 }
 
 .jira-scope-toggle__count {
-  margin-left: -1px;
+  margin-left: auto;
   color: var(--muted);
   font-size: 10px;
   font-weight: 800;
-  opacity: 0.72;
+  opacity: 0.78;
 }
 
 .jira-scope-toggle__count::before {
@@ -873,39 +867,7 @@ button {
   color: currentColor;
 }
 
-.jira-filter-chip {
-  display: flex;
-  min-width: 0;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  border-radius: var(--radius-sm);
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.jira-filter-chip--status {
-  height: 24px;
-  border: 1px solid color-mix(in srgb, var(--border) 56%, transparent);
-  color: var(--muted);
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
-  font-size: 10px;
-}
-
-.jira-filter-chip--status:hover {
-  color: var(--fg);
-  background: var(--hover);
-}
-
-.jira-filter-chip--status[aria-selected="true"] {
-  border-color: color-mix(in srgb, var(--fg) 36%, transparent);
-  color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 12%, transparent);
-}
-
-.jira-scope-toggle:disabled,
-.jira-filter-chip:disabled {
+.jira-scope-toggle:disabled {
   color: color-mix(in srgb, var(--muted) 55%, transparent);
   background: transparent;
   box-shadow: none;
@@ -913,56 +875,170 @@ button {
   opacity: 1;
 }
 
-.jira-scope-toggle:disabled:hover,
-.jira-filter-chip:disabled:hover {
+.jira-scope-toggle:disabled:hover {
   color: color-mix(in srgb, var(--muted) 55%, transparent);
   background: transparent;
 }
 
-.jira-scope-toggle:disabled .jira-scope-toggle__count,
-.jira-filter-chip:disabled .jira-panel__tab-count {
+.jira-scope-toggle:disabled .jira-scope-toggle__count {
   color: color-mix(in srgb, var(--muted) 55%, transparent);
   opacity: 1;
 }
 
-.jira-panel__tab-count {
-  color: var(--muted);
-  background: transparent;
-  border-radius: 0;
-  padding: 0;
+.jira-status-select {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.jira-status-select__trigger {
+  display: inline-flex;
+  min-width: 84px;
+  height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 7px 0 8px;
+  border: 1px solid rgba(156, 167, 184, 0.18);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  background: rgba(156, 167, 184, 0.045);
   font-size: 10px;
-  line-height: 1;
-  font-weight: 700;
-  opacity: 0.78;
+  font-weight: 800;
 }
 
-.jira-panel__tab-count::before {
-  content: "·";
-  margin-right: 4px;
-  opacity: 0.65;
+.jira-status-select__trigger:hover {
+  border-color: rgba(110, 203, 255, 0.32);
+  background: rgba(110, 203, 255, 0.07);
 }
 
-.jira-filter-chip[aria-selected="true"] .jira-panel__tab-count {
-  color: currentColor;
-  opacity: 0.78;
+.jira-status-select__trigger[aria-expanded="true"] {
+  border-color: rgba(110, 203, 255, 0.42);
+  background: rgba(110, 203, 255, 0.1);
 }
-.jira-panel__tab-count {
-  opacity: 0.78;
-  padding: 0;
-  border-radius: 0;
+
+.jira-status-select__label {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jira-status-select__menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 24;
+  display: grid;
+  min-width: 112px;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(72, 80, 96, 0.82);
+  border-radius: 10px;
+  background: #191b21;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+}
+
+.jira-status-select__menu[hidden] {
+  display: none;
+}
+
+.jira-status-select__menu button {
+  display: flex;
+  min-width: 0;
+  height: 26px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 7px;
+  border-radius: 6px;
+  color: var(--fg);
   font-size: 10px;
-  font-weight: 700;
-  color: var(--muted);
-  line-height: 1;
+  font-weight: 750;
+  text-align: left;
 }
 
-.jira-panel__tab[aria-selected="true"] .jira-panel__tab-count {
-  opacity: 1;
-  color: color-mix(
+.jira-status-select__menu button:hover,
+.jira-status-select__menu button[aria-selected="true"] {
+  background: var(--hover);
+}
+
+.jira-status-select__menu button[aria-selected="true"] {
+  color: var(--accent);
+}
+
+.jira-status-select__menu em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.jira-search-mode {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -1px 0 8px;
+  padding: 7px 8px;
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-focusBorder) 28%, var(--border));
+  border-radius: var(--radius-sm);
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(
     in srgb,
-    var(--vscode-button-background) 70%,
-    var(--vscode-button-foreground)
+    var(--vscode-focusBorder) 10%,
+    var(--panel-bg)
   );
+}
+
+.jira-search-mode[hidden] {
+  display: none;
+}
+
+.jira-search-mode__text {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  text-align: left;
+}
+
+.jira-search-mode__text strong {
+  color: var(--vscode-foreground);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.jira-search-mode__text span {
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jira-search-mode__clear {
+  display: inline-flex;
+  min-width: 70px;
+  height: 22px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.jira-search-mode__clear:hover {
+  background: var(--vscode-button-hoverBackground);
 }
 
 .jira-panel__section {

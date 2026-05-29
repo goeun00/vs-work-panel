@@ -4,9 +4,9 @@ const state = {
   view: "list",
   scopeFilters: {
     linked: false,
-    pin: false,
   },
   statusFilter: "all",
+  statusSelectOpen: false,
   keyword: "",
   ready: false,
   loading: {
@@ -58,10 +58,14 @@ const els = {
   branchMoreButton: document.querySelector("#branchMoreButton"),
   searchMode: document.querySelector(".jira-search-mode"),
   filterStack: document.querySelector(".jira-filter-stack"),
-  searchInput: document.querySelector(".jira-panel__search .jira-panel__input"),
   searchInput: document.querySelector("#searchInput"),
   tabs: [...document.querySelectorAll("[data-filter]")],
   counts: [...document.querySelectorAll("[data-count]")],
+  statusSelect: document.querySelector("#statusSelect"),
+  statusSelectTrigger: document.querySelector("#statusSelectTrigger"),
+  statusSelectLabel: document.querySelector("#statusSelectLabel"),
+  statusSelectMenu: document.querySelector("#statusSelectMenu"),
+  statusSelectIcon: document.querySelector("#statusSelectIcon"),
   list: document.querySelector("#jiraList"),
   settingUserName: document.querySelector("#settingUserName"),
   settingSubtitle: document.querySelector("#settingSubtitle"),
@@ -95,9 +99,9 @@ function mergeState(payload) {
   };
   state.scopeFilters = {
     linked: false,
-    pin: false,
     ...(state.scopeFilters || {}),
   };
+  state.statusSelectOpen = Boolean(state.statusSelectOpen);
   state.statusFilter = state.statusFilter || "all";
 }
 
@@ -248,6 +252,45 @@ function updateSearchMode() {
 
   if (els.filterStack) {
     els.filterStack.hidden = isSearchMode;
+  }
+}
+
+function updateStatusSelect() {
+  const labels = {
+    all: "All",
+    todo: "Todo",
+    doing: "Doing",
+    done: "Done",
+  };
+
+  if (els.statusSelectLabel) {
+    els.statusSelectLabel.textContent = labels[state.statusFilter] || "All";
+  }
+
+  if (els.statusSelectTrigger) {
+    els.statusSelectTrigger.setAttribute(
+      "aria-expanded",
+      String(state.statusSelectOpen),
+    );
+  }
+
+  if (els.statusSelectMenu) {
+    els.statusSelectMenu.hidden = !state.statusSelectOpen;
+  }
+
+  if (els.statusSelectIcon) {
+    els.statusSelectIcon.className = `codicon ${
+      state.statusSelectOpen ? "codicon-chevron-up" : "codicon-chevron-down"
+    }`;
+  }
+
+  if (els.statusSelectMenu) {
+    els.statusSelectMenu.querySelectorAll("[data-filter]").forEach((button) => {
+      button.setAttribute(
+        "aria-selected",
+        String(button.dataset.filter === state.statusFilter),
+      );
+    });
   }
 }
 function updateHeader() {
@@ -437,11 +480,10 @@ function updateCounts() {
       const isLinked = issue.key === branchKey || issue.epicKey === branchKey;
 
       if (isLinked) acc.linked += 1;
-      if (issue.pinned) acc.pin += 1;
       acc[issue.statusCategory] = (acc[issue.statusCategory] || 0) + 1;
       return acc;
     },
-    { linked: 0, pin: 0, todo: 0, doing: 0, done: 0 },
+    { linked: 0, todo: 0, doing: 0, done: 0 },
   );
 
   els.counts.forEach((count) => {
@@ -452,19 +494,14 @@ function updateCounts() {
 function getVisibleIssues() {
   const keyword = getSearchKeyword();
   const branchKey = getBranchIssueKey(state.branchName);
-  const hasScopeFilter = Boolean(
-    state.scopeFilters?.linked || state.scopeFilters?.pin,
-  );
+  const hasLinkedFilter = Boolean(state.scopeFilters?.linked);
 
   return state.issues
     .filter((issue) => {
       if (keyword) return true;
 
       const isLinked = issue.key === branchKey || issue.epicKey === branchKey;
-      const matchesScope = !hasScopeFilter
-        ? true
-        : (state.scopeFilters.linked && isLinked) ||
-          (state.scopeFilters.pin && issue.pinned);
+      const matchesScope = !hasLinkedFilter ? true : isLinked;
       const matchesStatus =
         state.statusFilter === "all"
           ? true
@@ -595,12 +632,10 @@ function getEmptyTemplate() {
     `;
   }
 
-  const hasScopeFilter = Boolean(
-    state.scopeFilters?.linked || state.scopeFilters?.pin,
-  );
+  const hasLinkedFilter = Boolean(state.scopeFilters?.linked);
 
   if (
-    !hasScopeFilter &&
+    !hasLinkedFilter &&
     state.statusFilter === "all" &&
     !state.keyword.trim()
   ) {
@@ -641,6 +676,7 @@ function getLoadingTemplate() {
 
 function render() {
   updateSearchMode();
+  updateStatusSelect();
   updateHeader();
   updateSettingsForm();
   updateView();
@@ -664,14 +700,11 @@ function render() {
   els.tabs.forEach((tab) => {
     tab.setAttribute(
       "aria-selected",
-      String(!isSearching && tab.dataset.filter === state.statusFilter),
+      String(tab.dataset.filter === state.statusFilter),
     );
     tab.disabled = isSearching;
     tab.setAttribute("aria-disabled", String(isSearching));
   });
-  if (els.searchFilterNote) {
-    els.searchFilterNote.hidden = !isSearching;
-  }
 
   renderIssues();
   persistViewState();
@@ -1013,13 +1046,24 @@ function bindEvents() {
     }
     if (action === "pin") togglePin(key);
     if (action === "toggleScopeFilter") {
-      if (scope === "linked" || scope === "pin") {
+      if (scope === "linked") {
         state.scopeFilters = {
           ...state.scopeFilters,
           [scope]: !state.scopeFilters[scope],
         };
         render();
       }
+      return;
+    }
+    if (action === "toggleStatusSelect") {
+      state.statusSelectOpen = !state.statusSelectOpen;
+      render();
+      return;
+    }
+    if (action === "selectStatusFilter") {
+      state.statusFilter = target.dataset.filter || "all";
+      state.statusSelectOpen = false;
+      render();
       return;
     }
     if (action === "memo") toggleMemo(key);
@@ -1060,11 +1104,14 @@ function bindEvents() {
   });
 
   document.addEventListener("click", (event) => {
-    const tab = event.target.closest("[data-filter]");
-    if (!tab) return;
-
-    state.statusFilter = tab.dataset.filter || "all";
-    render();
+    if (
+      state.statusSelectOpen &&
+      els.statusSelect &&
+      !els.statusSelect.contains(event.target)
+    ) {
+      state.statusSelectOpen = false;
+      render();
+    }
   });
 
   els.searchInput.addEventListener("input", (event) => {
@@ -1073,6 +1120,12 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.statusSelectOpen) {
+      state.statusSelectOpen = false;
+      render();
+      return;
+    }
+
     if (!event.target.matches?.(".jira-panel__branch-alias-input")) return;
     if (event.key === "Enter") saveBranchAlias();
     if (event.key === "Escape") closeAliasEditor();

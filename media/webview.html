@@ -159,68 +159,73 @@
                     >0</span
                   >
                 </button>
-                <button
-                  class="jira-scope-toggle"
-                  type="button"
-                  data-action="toggleScopeFilter"
-                  data-scope="pin"
-                  aria-pressed="false"
-                >
-                  <span class="jira-scope-toggle__switch" aria-hidden="true">
-                    <span class="jira-scope-toggle__knob"></span>
-                  </span>
-                  <span class="jira-scope-toggle__label">Pin</span>
-                  <span class="jira-scope-toggle__count" data-count="pin"
-                    >0</span
-                  >
-                </button>
               </div>
-            </div>
-
-            <div
-              class="jira-filter-row jira-filter-row--status"
-              role="tablist"
-              aria-label="Jira 상태 필터"
-            >
-              <button
-                class="jira-filter-chip jira-filter-chip--status"
-                type="button"
-                role="tab"
-                aria-selected="true"
-                data-filter="all"
-              >
-                All
-              </button>
-              <button
-                class="jira-filter-chip jira-filter-chip--status"
-                type="button"
-                role="tab"
-                aria-selected="false"
-                data-filter="todo"
-              >
-                Todo
-                <span class="jira-panel__tab-count" data-count="todo">0</span>
-              </button>
-              <button
-                class="jira-filter-chip jira-filter-chip--status"
-                type="button"
-                role="tab"
-                aria-selected="false"
-                data-filter="doing"
-              >
-                Doing
-                <span class="jira-panel__tab-count" data-count="doing">0</span>
-              </button>
-              <button
-                class="jira-filter-chip jira-filter-chip--status"
-                type="button"
-                role="tab"
-                aria-selected="false"
-                data-filter="done"
-              >
-                Done
-                <span class="jira-panel__tab-count" data-count="done">0</span>
-              </button>
+              <div class="jira-status-select" id="statusSelect">
+                <button
+                  class="jira-status-select__trigger"
+                  id="statusSelectTrigger"
+                  type="button"
+                  data-action="toggleStatusSelect"
+                  aria-expanded="false"
+                  aria-haspopup="listbox"
+                >
+                  <span class="jira-status-select__label" id="statusSelectLabel"
+                    >All</span
+                  >
+                  <span
+                    class="codicon codicon-chevron-down"
+                    id="statusSelectIcon"
+                    aria-hidden="true"
+                  ></span>
+                </button>
+                <div
+                  class="jira-status-select__menu"
+                  id="statusSelectMenu"
+                  role="listbox"
+                  aria-label="Jira 상태 필터"
+                  hidden
+                >
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected="true"
+                    data-action="selectStatusFilter"
+                    data-filter="all"
+                  >
+                    <span>All</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    data-action="selectStatusFilter"
+                    data-filter="todo"
+                  >
+                    <span>Todo</span>
+                    <em data-count="todo">0</em>
+                  </button>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    data-action="selectStatusFilter"
+                    data-filter="doing"
+                  >
+                    <span>Doing</span>
+                    <em data-count="doing">0</em>
+                  </button>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    data-action="selectStatusFilter"
+                    data-filter="done"
+                  >
+                    <span>Done</span>
+                    <em data-count="done">0</em>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
