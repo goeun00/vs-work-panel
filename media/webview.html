@@ -108,38 +108,9 @@
         id="listView"
       >
         <div class="jira-list-controls">
-          <div class="jira-list-head">
-            <div class="jira-panel__search">
-              <span
-                class="jira-panel__search-icon codicon codicon-search"
-                aria-hidden="true"
-              ></span>
-              <input
-                class="jira-panel__input"
-                id="searchInput"
-                type="search"
-                placeholder="key, title, memo"
-              />
-            </div>
-          </div>
-          <div class="jira-search-mode" role="status" hidden>
-            <div class="jira-search-mode__text">
-              <strong>검색 모드 🔎</strong>
-              <span>필터는 잠깐 쉬는 중, 전체 이슈에서 찾고 있어요.</span>
-            </div>
-            <button
-              class="jira-search-mode__clear"
-              type="button"
-              data-action="clearSearch"
-              aria-label="검색어 지우고 필터 보기"
-            >
-              검색 모드 해제
-            </button>
-          </div>
-
           <div class="jira-filter-stack" aria-label="Jira 필터">
             <div class="jira-filter-head">
-              <span class="jira-filter-title">Filter</span>
+              <span class="jira-filter-title">issues</span>
               <div
                 class="jira-filter-row jira-filter-row--scope"
                 aria-label="Jira 보기 조건"
@@ -193,6 +164,9 @@
                     data-filter="all"
                   >
                     <span>All</span>
+                    <span class="jira-panel__tab-count" data-count="all"
+                      >0</span
+                    >
                   </button>
                   <button
                     type="button"
@@ -227,6 +201,34 @@
                 </div>
               </div>
             </div>
+          </div>
+          <div class="jira-list-head">
+            <div class="jira-panel__search">
+              <span
+                class="jira-panel__search-icon codicon codicon-search"
+                aria-hidden="true"
+              ></span>
+              <input
+                class="jira-panel__input"
+                id="searchInput"
+                type="search"
+                placeholder="key, title, memo"
+              />
+            </div>
+          </div>
+          <div class="jira-search-mode" role="status" hidden>
+            <div class="jira-search-mode__text">
+              <strong>검색 모드 🔎</strong>
+              <span>필터는 잠깐 쉬는 중, 전체 이슈에서 찾고 있어요.</span>
+            </div>
+            <button
+              class="jira-search-mode__clear"
+              type="button"
+              data-action="clearSearch"
+              aria-label="검색어 지우고 필터 보기"
+            >
+              검색 모드 해제
+            </button>
           </div>
         </div>
 

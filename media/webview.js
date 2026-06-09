@@ -1,5 +1,10 @@
 const vscode = acquireVsCodeApi();
-
+const STATUS_LABELS = {
+  all: "All",
+  todo: "Todo",
+  doing: "Doing",
+  done: "Done",
+};
 const state = {
   view: "list",
   scopeFilters: {
@@ -152,6 +157,40 @@ function escapeRegExp(value) {
 
 function getSearchKeyword() {
   return state.keyword.trim();
+}
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/[._,/#!%^&*;:{}=+~()'"?<>@`|-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getSearchTokens(value) {
+  return normalizeSearchText(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function matchesSearch(issue, keyword) {
+  const tokens = getSearchTokens(keyword);
+  if (!tokens.length) return true;
+
+  const haystack = normalizeSearchText(
+    [
+      issue.key,
+      issue.title,
+      issue.memo,
+      issue.assignee,
+      issue.reporter,
+      issue.statusCategory,
+      issue.epicKey,
+    ].join(" "),
+  );
+
+  return tokens.every((token) => haystack.includes(token));
 }
 
 function highlightText(value, keyword = getSearchKeyword()) {
@@ -475,20 +514,45 @@ function updateView() {
 function updateCounts() {
   const branchKey = getBranchIssueKey(state.branchName);
 
-  const counts = state.issues.reduce(
-    (acc, issue) => {
-      const isLinked = issue.key === branchKey || issue.epicKey === branchKey;
+  const linkedCount = state.issues.reduce((acc, issue) => {
+    const isLinked =
+      Boolean(branchKey) &&
+      (issue.key === branchKey || issue.epicKey === branchKey);
 
-      if (isLinked) acc.linked += 1;
+    return acc + (isLinked ? 1 : 0);
+  }, 0);
+
+  const scopedIssues = state.issues.filter((issue) => {
+    const isLinked =
+      Boolean(branchKey) &&
+      (issue.key === branchKey || issue.epicKey === branchKey);
+
+    return !state.scopeFilters?.linked ? true : isLinked;
+  });
+
+  const statusCounts = scopedIssues.reduce(
+    (acc, issue) => {
+      acc.all += 1;
       acc[issue.statusCategory] = (acc[issue.statusCategory] || 0) + 1;
       return acc;
     },
-    { linked: 0, todo: 0, doing: 0, done: 0 },
+    { all: 0, todo: 0, doing: 0, done: 0 },
   );
 
   els.counts.forEach((count) => {
-    count.textContent = counts[count.dataset.count] || 0;
+    const key = count.dataset.count;
+
+    if (key === "linked") {
+      count.textContent = linkedCount;
+      return;
+    }
+
+    count.textContent = statusCounts[key] || 0;
   });
+
+  if (els.statusSelectLabel) {
+    els.statusSelectLabel.textContent = `${STATUS_LABELS[state.statusFilter] || "All"} · ${statusCounts[state.statusFilter] || 0}`;
+  }
 }
 
 function getVisibleIssues() {
@@ -500,7 +564,10 @@ function getVisibleIssues() {
     .filter((issue) => {
       if (keyword) return true;
 
-      const isLinked = issue.key === branchKey || issue.epicKey === branchKey;
+      const isLinked =
+        Boolean(branchKey) &&
+        (issue.key === branchKey || issue.epicKey === branchKey);
+
       const matchesScope = !hasLinkedFilter ? true : isLinked;
       const matchesStatus =
         state.statusFilter === "all"
@@ -509,27 +576,18 @@ function getVisibleIssues() {
 
       return matchesScope && matchesStatus;
     })
-    .filter((issue) => {
-      if (!keyword) return true;
-      return [
-        issue.key,
-        issue.title,
-        issue.memo,
-        issue.assignee,
-        issue.reporter,
-        issue.statusCategory,
-        issue.epicKey,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(keyword.toLowerCase());
-    })
+    .filter((issue) => matchesSearch(issue, keyword))
     .sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-      return 0;
+      const getRank = (issue) => {
+        if (issue.pinned) return 0;
+        if (branchKey && issue.key === branchKey) return 1;
+        if (branchKey && issue.epicKey === branchKey) return 2;
+        return 3;
+      };
+
+      return getRank(a) - getRank(b);
     });
 }
-
 function renderIssues() {
   const issues = getVisibleIssues();
   const branchKey = getBranchIssueKey(state.branchName);
@@ -553,7 +611,8 @@ function renderIssues() {
       const isMemoOpen = state.openMemoKey === issue.key;
       const isMemoEditing = state.editingMemoKey === issue.key;
       const isActiveBranch =
-        issue.key === branchKey || issue.epicKey === branchKey;
+        Boolean(branchKey) &&
+        (issue.key === branchKey || issue.epicKey === branchKey);
       const classes = [
         "jira-card",
         isActiveBranch ? "jira-card--active" : "",
